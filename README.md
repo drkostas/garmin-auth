@@ -1,8 +1,21 @@
 # garmin-auth
 
+[![CI](https://github.com/drkostas/garmin-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/drkostas/garmin-auth/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/garmin-auth)](https://pypi.org/project/garmin-auth/)
+[![Python](https://img.shields.io/pypi/pyversions/garmin-auth)](https://pypi.org/project/garmin-auth/)
+
 Self-healing Garmin Connect OAuth authentication for Python.
 
 Handles the complex Garmin SSO flow (OAuth1 → OAuth2), automatic token refresh, and rate limit recovery — so you don't have to.
+
+## Why?
+
+The [`garminconnect`](https://pypi.org/project/garminconnect/) library handles basic auth but breaks in CI/CD — tokens expire between runs, shared IPs get rate-limited (429), and there's no automatic recovery. This package wraps it with:
+
+- **Self-healing login** — three cascading strategies (cached token → OAuth1 exchange → full SSO re-login)
+- **Token persistence** — survives CI ephemeral runners via file or DB storage
+- **Rate limit handling** — retry with backoff on 429, never hammers Garmin's servers
+- **Zero-config CLI** — interactive prompts, saved email, friendly output
 
 ## Install
 
@@ -115,6 +128,16 @@ docker run -v garmin-tokens:/root/.garminconnect garmin-auth status
 # Refresh (for cron)
 docker run -e GARMIN_EMAIL=... -e GARMIN_PASSWORD=... \
   -v garmin-tokens:/root/.garminconnect garmin-auth refresh
+```
+
+## Development
+
+```bash
+git clone https://github.com/drkostas/garmin-auth.git
+cd garmin-auth
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest tests/ -v
 ```
 
 ## Limitations
