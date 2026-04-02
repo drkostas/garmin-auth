@@ -14,19 +14,22 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 import time
 from base64 import b64encode
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qs, quote
 
 import requests
 
-DOMAIN = "garmin.com"
-SSO_BASE = f"https://sso.{DOMAIN}/sso"
-API_BASE = f"https://connectapi.{DOMAIN}"
-USER_AGENT = "GCM-iOS-5.7.2.1"
-CONSUMER_URL = "https://thegarth.s3.amazonaws.com/oauth_consumer.json"
+logger = logging.getLogger("garmin_auth")
+
+DOMAIN: str = "garmin.com"
+SSO_BASE: str = f"https://sso.{DOMAIN}/sso"
+API_BASE: str = f"https://connectapi.{DOMAIN}"
+USER_AGENT: str = "GCM-iOS-5.7.2.1"
+CONSUMER_URL: str = "https://thegarth.s3.amazonaws.com/oauth_consumer.json"
 
 
 def _oauth1_sign(
@@ -56,10 +59,10 @@ def _build_oauth1_header(
     token_secret: str = "",
 ) -> str:
     """Build OAuth1 Authorization header."""
-    nonce = secrets.token_hex(16)
-    timestamp = str(int(time.time()))
+    nonce: str = secrets.token_hex(16)
+    timestamp: str = str(int(time.time()))
 
-    oauth_params = {
+    oauth_params: dict[str, str] = {
         "oauth_consumer_key": consumer_key,
         "oauth_nonce": nonce,
         "oauth_signature_method": "HMAC-SHA1",
@@ -70,30 +73,30 @@ def _build_oauth1_header(
         oauth_params["oauth_token"] = oauth_token
 
     # Include query params in signature base
-    base_url = url.split("?")[0]
-    all_params = dict(oauth_params)
+    base_url: str = url.split("?")[0]
+    all_params: dict[str, str] = dict(oauth_params)
     if "?" in url:
         for part in url.split("?", 1)[1].split("&"):
             k, _, v = part.partition("=")
             all_params[k] = v
 
-    signature = _oauth1_sign(method, base_url, all_params, consumer_secret, token_secret)
+    signature: str = _oauth1_sign(method, base_url, all_params, consumer_secret, token_secret)
     oauth_params["oauth_signature"] = signature
 
-    header_parts = ", ".join(
+    header_parts: str = ", ".join(
         f'{quote(k, safe="")}="{quote(v, safe="")}"'
         for k, v in oauth_params.items()
     )
     return f"OAuth {header_parts}"
 
 
-def full_login(email: str, password: str) -> dict:
-    """Perform full SSO login flow. Returns dict with oauth1 and oauth2 tokens.
+def full_login(email: str, password: str) -> dict[str, dict]:
+    """Perform full SSO login flow.
 
     Returns:
         {
-            "oauth1_token.json": { "oauth_token": ..., "oauth_token_secret": ..., "domain": ... },
-            "oauth2_token.json": { "access_token": ..., "expires_at": ..., ... },
+            "oauth1_token.json": {"oauth_token": ..., "oauth_token_secret": ..., "domain": ...},
+            "oauth2_token.json": {"access_token": ..., "expires_at": ..., ...},
         }
 
     Raises:
@@ -102,8 +105,12 @@ def full_login(email: str, password: str) -> dict:
     session = requests.Session()
     session.headers["User-Agent"] = USER_AGENT
 
-    embed_params = {"id": "gauth-widget", "embedWidget": "true", "gauthHost": SSO_BASE}
-    signin_params = {
+    embed_params: dict[str, str] = {
+        "id": "gauth-widget",
+        "embedWidget": "true",
+        "gauthHost": SSO_BASE,
+    }
+    signin_params: dict[str, str] = {
         **embed_params,
         "service": f"{SSO_BASE}/embed",
         "source": f"{SSO_BASE}/embed",
@@ -112,16 +119,19 @@ def full_login(email: str, password: str) -> dict:
     }
 
     # Step 1: Initialize SSO session
+    logger.debug("SSO step 1: initializing session")
     session.get(f"{SSO_BASE}/embed", params=embed_params)
 
     # Step 2: Get CSRF token
-    resp = session.get(f"{SSO_BASE}/signin", params=signin_params)
+    logger.debug("SSO step 2: fetching CSRF token")
+    resp: requests.Response = session.get(f"{SSO_BASE}/signin", params=signin_params)
     csrf_match = re.search(r'name="_csrf"\s+value="(.+?)"', resp.text)
     if not csrf_match:
         raise RuntimeError("Could not extract CSRF token from Garmin SSO signin page")
-    csrf = csrf_match.group(1)
+    csrf: str = csrf_match.group(1)
 
     # Step 3: Submit credentials
+    logger.debug("SSO step 3: submitting credentials")
     resp = session.post(
         f"{SSO_BASE}/signin",
         params=signin_params,
@@ -130,7 +140,10 @@ def full_login(email: str, password: str) -> dict:
 
     # Check for MFA
     if "MFA" in resp.text and "ticket=" not in resp.text:
-        raise RuntimeError("MFA required — garmin-auth does not support MFA. Disable it in Garmin account settings.")
+        raise RuntimeError(
+            "MFA required — garmin-auth does not support MFA. "
+            "Disable it in Garmin account settings."
+        )
 
     # Step 4: Extract ticket
     ticket_match = re.search(r'embed\?ticket=([^"&]+)', resp.text)
@@ -140,35 +153,43 @@ def full_login(email: str, password: str) -> dict:
         if "incorrect" in resp.text.lower():
             raise RuntimeError("Invalid email or password")
         error_match = re.search(r'data-error="([^"]+)"', resp.text)
-        error_msg = error_match.group(1) if error_match else "unknown error"
+        error_msg: str = error_match.group(1) if error_match else "unknown error"
         raise RuntimeError(f"SSO login failed: {error_msg}")
-    ticket = ticket_match.group(1)
+    ticket: str = ticket_match.group(1)
+    logger.debug("SSO step 4: ticket extracted")
 
     # Step 5: Fetch OAuth consumer credentials
-    consumer_resp = session.get(CONSUMER_URL)
+    logger.debug("SSO step 5: fetching consumer credentials")
+    consumer_resp: requests.Response = session.get(CONSUMER_URL)
     consumer_resp.raise_for_status()
-    consumer = consumer_resp.json()
-    consumer_key = consumer["consumer_key"]
-    consumer_secret = consumer["consumer_secret"]
+    consumer: dict = consumer_resp.json()
+    consumer_key: str = consumer["consumer_key"]
+    consumer_secret: str = consumer["consumer_secret"]
 
     # Step 6: Exchange ticket for OAuth1 token
-    preauth_url = (
+    logger.debug("SSO step 6: exchanging ticket for OAuth1")
+    preauth_url: str = (
         f"{API_BASE}/oauth-service/oauth/preauthorized"
         f"?ticket={quote(ticket)}"
         f"&login-url={quote(f'{SSO_BASE}/embed')}"
         f"&accepts-mfa-tokens=true"
     )
-    preauth_header = _build_oauth1_header("GET", preauth_url, consumer_key, consumer_secret)
-    preauth_resp = session.get(
+    preauth_header: str = _build_oauth1_header("GET", preauth_url, consumer_key, consumer_secret)
+    preauth_resp: requests.Response = session.get(
         preauth_url,
-        headers={"Authorization": preauth_header, "User-Agent": "com.garmin.android.apps.connectmobile"},
+        headers={
+            "Authorization": preauth_header,
+            "User-Agent": "com.garmin.android.apps.connectmobile",
+        },
     )
     if not preauth_resp.ok:
-        raise RuntimeError(f"OAuth1 token exchange failed ({preauth_resp.status_code}): {preauth_resp.text[:200]}")
+        raise RuntimeError(
+            f"OAuth1 token exchange failed ({preauth_resp.status_code}): "
+            f"{preauth_resp.text[:200]}"
+        )
 
-    from urllib.parse import parse_qs
-    preauth_data = parse_qs(preauth_resp.text)
-    oauth1 = {
+    preauth_data: dict[str, list[str]] = parse_qs(preauth_resp.text)
+    oauth1: dict[str, str] = {
         "oauth_token": preauth_data.get("oauth_token", [""])[0],
         "oauth_token_secret": preauth_data.get("oauth_token_secret", [""])[0],
         "domain": DOMAIN,
@@ -177,13 +198,15 @@ def full_login(email: str, password: str) -> dict:
         raise RuntimeError("No OAuth1 token in preauth response")
 
     # Step 7: Exchange OAuth1 → OAuth2
-    oauth2 = exchange_oauth1(oauth1, consumer_key, consumer_secret)
+    logger.debug("SSO step 7: exchanging OAuth1 for OAuth2")
+    oauth2: dict = exchange_oauth1(oauth1, consumer_key, consumer_secret)
 
+    logger.info("Full SSO login completed successfully")
     return {"oauth1_token.json": oauth1, "oauth2_token.json": oauth2}
 
 
 def exchange_oauth1(
-    oauth1: dict,
+    oauth1: dict[str, str],
     consumer_key: str = "",
     consumer_secret: str = "",
 ) -> dict:
@@ -196,17 +219,20 @@ def exchange_oauth1(
 
     Returns:
         OAuth2 token dict with access_token, expires_at, etc.
-    """
-    domain = oauth1.get("domain", DOMAIN)
-    exchange_url = f"https://connectapi.{domain}/oauth-service/oauth/exchange/user/2.0"
 
-    auth_header = _build_oauth1_header(
+    Raises:
+        RuntimeError: If exchange fails.
+    """
+    domain: str = oauth1.get("domain", DOMAIN)
+    exchange_url: str = f"https://connectapi.{domain}/oauth-service/oauth/exchange/user/2.0"
+
+    auth_header: str = _build_oauth1_header(
         "POST", exchange_url,
         consumer_key, consumer_secret,
         oauth1["oauth_token"], oauth1["oauth_token_secret"],
     )
 
-    resp = requests.post(
+    resp: requests.Response = requests.post(
         exchange_url,
         headers={
             "Authorization": auth_header,
@@ -217,10 +243,12 @@ def exchange_oauth1(
     )
 
     if not resp.ok:
-        raise RuntimeError(f"OAuth1→OAuth2 exchange failed ({resp.status}): {resp.text[:200]}")
+        raise RuntimeError(
+            f"OAuth1→OAuth2 exchange failed ({resp.status_code}): {resp.text[:200]}"
+        )
 
-    oauth2 = resp.json()
-    now = int(time.time())
+    oauth2: dict = resp.json()
+    now: int = int(time.time())
     oauth2["expires_at"] = now + oauth2.get("expires_in", 86400)
     oauth2["refresh_token_expires_at"] = now + oauth2.get("refresh_token_expires_in", 7776000)
     return oauth2
