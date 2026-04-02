@@ -30,6 +30,7 @@ docs/plans/
 .claude/
 *.log
 
-# Tokens (never commit)
+# Tokens and config (never commit)
 .garminconnect/
+.garmin-auth/
 tokens/

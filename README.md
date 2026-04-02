@@ -10,61 +10,61 @@ Handles the complex Garmin SSO flow (OAuth1 → OAuth2), automatic token refresh
 pip install garmin-auth
 ```
 
-For PostgreSQL token storage:
-```bash
-pip install garmin-auth[db]
-```
-
 ## Quick Start
 
-```python
-from garmin_auth import GarminAuth
-
-auth = GarminAuth(email="you@example.com", password="yourpassword")
-client = auth.login()  # Returns an authenticated garminconnect.Garmin client
-
-# Use the client
-activities = client.get_activities(0, 10)
-```
-
-Or use environment variables:
-```bash
-export GARMIN_EMAIL=you@example.com
-export GARMIN_PASSWORD=yourpassword
-```
-
-```python
-auth = GarminAuth()
-client = auth.login()
-```
-
-## CLI
+### CLI
 
 ```bash
-# Login and save tokens
-garmin-auth login --email you@example.com --password yourpassword
+# First time — prompts for email and password interactively
+garmin-auth login
 
 # Check token status
 garmin-auth status
 
 # Refresh tokens (for cron jobs / CI)
 garmin-auth refresh
+
+# Pass credentials via flags
+garmin-auth login --email you@example.com --password yourpassword
+
+# Or via environment variables
+export GARMIN_EMAIL=you@example.com
+export GARMIN_PASSWORD=yourpassword
+garmin-auth login
 ```
 
-## Token Storage
+After first login, your email is saved to `~/.garmin-auth/config.json` so you only need to enter your password on subsequent logins.
 
-**File-based (default):** Tokens saved to `~/.garminconnect/` as JSON files.
+### Python API
 
 ```python
-auth = GarminAuth(token_dir="~/.garminconnect")
+from garmin_auth import GarminAuth
+
+# Reads GARMIN_EMAIL/GARMIN_PASSWORD from env, or uses saved tokens
+auth = GarminAuth()
+client = auth.login()  # Returns an authenticated garminconnect.Garmin client
+
+# Use the client
+activities = client.get_activities(0, 10)
 ```
 
-**PostgreSQL:** For CI/CD or multi-machine setups.
+```python
+# Rate-limited API calls (retry with backoff on 429)
+from garmin_auth import GarminAuth, RateLimiter
+
+auth = GarminAuth()
+client = auth.login()
+limiter = RateLimiter(delay=1.0, max_retries=3)
+
+activities = limiter.call(client.get_activities, 0, 10)
+heart_rates = limiter.call(client.get_heart_rates, "2026-01-01")
+```
 
 ```python
-from garmin_auth import GarminAuth, DBTokenStore
-
-auth = GarminAuth(store=DBTokenStore("postgresql://user:pass@host/db"))
+# Token maintenance (no client needed)
+auth = GarminAuth()
+result = auth.refresh()   # {"status": "refreshed", "hours_valid": "23.5", ...}
+info = auth.status()      # {"status": "valid", "hours_remaining": 23.5, ...}
 ```
 
 ## How It Works
@@ -75,14 +75,52 @@ Three strategies, tried in order:
 2. **Token exchange** — Use OAuth1 to get fresh OAuth2 (no password needed)
 3. **Full SSO login** — Email/password through Garmin's SSO flow (last resort)
 
-This means tokens stay fresh automatically, and even if they fully expire, the package recovers without manual intervention.
+Tokens stay fresh automatically. Even if they fully expire, the package recovers without manual intervention.
+
+## Token Storage
+
+Tokens are saved to `~/.garminconnect/` by default (garth-compatible JSON files).
+
+```bash
+# Custom token directory
+garmin-auth --token-dir /path/to/tokens login
+```
+
+```python
+# Custom directory in Python
+auth = GarminAuth(token_dir="/path/to/tokens")
+```
+
+For PostgreSQL storage (CI/CD or multi-machine setups):
+
+```python
+from garmin_auth import GarminAuth
+from garmin_auth.storage import DBTokenStore
+
+auth = GarminAuth(store=DBTokenStore("postgresql://user:pass@host/db"))
+```
 
 ## Docker
 
 ```bash
+# Build
 docker build -t garmin-auth .
-docker run -e GARMIN_EMAIL=... -e GARMIN_PASSWORD=... garmin-auth refresh
+
+# Login (interactive)
+docker run -it -v garmin-tokens:/root/.garminconnect garmin-auth login
+
+# Check status
+docker run -v garmin-tokens:/root/.garminconnect garmin-auth status
+
+# Refresh (for cron)
+docker run -e GARMIN_EMAIL=... -e GARMIN_PASSWORD=... \
+  -v garmin-tokens:/root/.garminconnect garmin-auth refresh
 ```
+
+## Limitations
+
+- **MFA not supported** — If your Garmin account has MFA enabled, disable it or use an app password
+- **Garmin rate limits** — Garmin aggressively rate-limits auth attempts (429). The package handles retries with backoff, but excessive calls in a short period may require waiting 1-24 hours
 
 ## License
 
