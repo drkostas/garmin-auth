@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "garmin-auth"
-version = "0.1.0"
+version = "0.1.1"
 description = "Self-healing Garmin Connect OAuth authentication — login, token refresh, and rate limit recovery"
 readme = "README.md"
 license = "MIT"
