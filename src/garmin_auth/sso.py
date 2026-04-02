@@ -138,6 +138,12 @@ def full_login(email: str, password: str) -> dict[str, dict]:
         data={"username": email, "password": password, "embed": "true", "_csrf": csrf},
     )
 
+    # Check for rate limiting (429 returns JSON, not HTML)
+    if resp.status_code == 429 or '"429"' in resp.text:
+        raise RuntimeError(
+            "Garmin rate limited (429). Wait 1-24 hours before retrying."
+        )
+
     # Check for MFA
     if "MFA" in resp.text and "ticket=" not in resp.text:
         raise RuntimeError(
@@ -153,7 +159,14 @@ def full_login(email: str, password: str) -> dict[str, dict]:
         if "incorrect" in resp.text.lower():
             raise RuntimeError("Invalid email or password")
         error_match = re.search(r'data-error="([^"]+)"', resp.text)
-        error_msg: str = error_match.group(1) if error_match else "unknown error"
+        title_match = re.search(r'<title>(.*?)</title>', resp.text)
+        status_match = re.search(r'status-msg[^>]*>([^<]+)', resp.text)
+        error_msg: str = (
+            error_match.group(1) if error_match
+            else status_match.group(1).strip() if status_match
+            else f"unknown (title: {title_match.group(1) if title_match else 'none'}, status: {resp.status_code})"
+        )
+        logger.debug("SSO login response (first 500 chars): %s", resp.text[:500])
         raise RuntimeError(f"SSO login failed: {error_msg}")
     ticket: str = ticket_match.group(1)
     logger.debug("SSO step 4: ticket extracted")
