@@ -9,6 +9,7 @@ Auth strategy (in order):
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import datetime
@@ -24,6 +25,8 @@ from garth.exc import GarthHTTPError
 
 from garmin_auth.sso import exchange_oauth1, full_login
 from garmin_auth.storage import FileTokenStore, TokenStore
+
+logger = logging.getLogger("garmin_auth")
 
 # Delay between API calls to avoid rate limiting
 API_CALL_DELAY = 1.0
@@ -143,7 +146,7 @@ class GarminAuth:
                         "hours_valid": f"{(new_oauth2['expires_at'] - time.time()) / 3600:.1f}",
                     }
                 except Exception as e:
-                    print(f"[garmin-auth] OAuth1 exchange failed: {e}")
+                    logger.warning("OAuth1 exchange failed: %s", e)
 
         # Fall back to full login
         if not self.email or not self.password:
@@ -220,16 +223,16 @@ class GarminAuth:
             expires_at = oauth2.get("expires_at", 0)
             remaining = (datetime.fromtimestamp(expires_at) - datetime.now()).total_seconds() / 3600
             if remaining <= 1:
-                print(f"[garmin-auth] OAuth2 expiring soon ({remaining:.1f}h)")
+                logger.info("OAuth2 expiring soon (%.1fh)", remaining)
                 return None
 
             client = Garmin()
             client.login(str(self._garth_dir))
-            print(f"[garmin-auth] Using cached token ({remaining:.1f}h remaining)")
+            logger.info("Using cached token (%.1fh remaining)", remaining)
             self._save_tokens(client)
             return client
         except Exception as e:
-            print(f"[garmin-auth] Cached token failed: {e}")
+            logger.debug("Cached token failed: %s", e)
             return None
 
     def _try_token_exchange(self) -> Optional[Garmin]:
@@ -237,37 +240,35 @@ class GarminAuth:
         try:
             client = Garmin()
             client.login(str(self._garth_dir))
-            print("[garmin-auth] Token exchange successful")
+            logger.info("Token exchange successful")
             self._save_tokens(client)
             return client
         except GarminConnectTooManyRequestsError:
-            print("[garmin-auth] Rate limited (429) on token exchange")
+            logger.warning("Rate limited (429) on token exchange")
             return None
         except (FileNotFoundError, GarthHTTPError, GarminConnectAuthenticationError) as e:
-            print(f"[garmin-auth] Token exchange failed: {e}")
+            logger.debug("Token exchange failed: %s", e)
             return None
 
     def _try_full_login(self) -> Optional[Garmin]:
         """Strategy 3: Full SSO login with email/password."""
         if not self.email or not self.password:
-            print("[garmin-auth] No credentials for full login")
+            logger.warning("No credentials for full login")
             return None
 
         try:
-            # Use our SSO implementation to get fresh tokens
             tokens = full_login(self.email, self.password)
             self.store.save(tokens)
             self._write_tokens_to_disk(tokens)
 
-            # Now login garminconnect with the fresh tokens
             client = Garmin()
             client.login(str(self._garth_dir))
-            print(f"[garmin-auth] Full SSO login successful (display_name={client.display_name})")
+            logger.info("Full SSO login successful (display_name=%s)", client.display_name)
             self._save_tokens(client)
             return client
         except GarminConnectTooManyRequestsError:
-            print("[garmin-auth] Rate limited (429) on full login")
+            logger.warning("Rate limited (429) on full login")
             return None
         except Exception as e:
-            print(f"[garmin-auth] Full login failed: {e}")
+            logger.error("Full login failed: %s", e)
             return None

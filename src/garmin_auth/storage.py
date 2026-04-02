@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger("garmin_auth")
 
 
 class TokenStore(ABC):
@@ -90,7 +93,7 @@ class DBTokenStore(TokenStore):
                                 creds[key] = json.loads(creds[key])
                         return creds
         except Exception as e:
-            print(f"[garmin-auth] DB load failed: {e}")
+            logger.warning("DB load failed: %s", e)
         return None
 
     def save(self, tokens: dict) -> None:
@@ -107,4 +110,4 @@ class DBTokenStore(TokenStore):
                     )
                 conn.commit()
         except Exception as e:
-            print(f"[garmin-auth] DB save failed: {e}")
+            logger.warning("DB save failed: %s", e)

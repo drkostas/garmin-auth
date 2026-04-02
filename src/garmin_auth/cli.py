@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 
@@ -63,6 +64,8 @@ def main() -> None:
     parser.add_argument("--password", help="Garmin password (or GARMIN_PASSWORD env var)")
     parser.add_argument("--token-dir", default="~/.garminconnect", help="Token storage directory (default: ~/.garminconnect)")
     parser.add_argument("--database-url", help="PostgreSQL URL for DB token storage (or DATABASE_URL env var)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
+    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress all logging")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("login", help="Login and save tokens")
@@ -70,6 +73,10 @@ def main() -> None:
     subparsers.add_parser("refresh", help="Refresh tokens if needed")
 
     args = parser.parse_args()
+
+    # Configure logging
+    level = logging.DEBUG if args.verbose else (logging.CRITICAL if args.quiet else logging.INFO)
+    logging.basicConfig(format="%(message)s", level=level)
 
     commands = {"login": cmd_login, "status": cmd_status, "refresh": cmd_refresh}
     commands[args.command](args)

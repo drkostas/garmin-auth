@@ -9,7 +9,7 @@ description = "Self-healing Garmin Connect OAuth authentication — login, token
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-authors = [{ name = "Kostas Georgiou", email = "delfinas7kostas@gmail.com" }]
+authors = [{ name = "Konstantinos Georgiou", email = "delfinas7kostas@gmail.com" }]
 keywords = ["garmin", "oauth", "authentication", "garmin-connect", "fitness"]
 classifiers = [
     "Development Status :: 3 - Alpha",
