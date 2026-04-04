@@ -195,6 +195,15 @@ class GarminAuth:
         """Write tokens to filesystem so garth/garminconnect can load them."""
         self._garth_dir.mkdir(parents=True, exist_ok=True)
         for filename, data in tokens.items():
+            if isinstance(data, str):
+                data = json.loads(data)
+            # Ensure garth-required timestamp fields exist
+            if filename == "oauth2_token.json" and isinstance(data, dict):
+                now = int(time.time())
+                if "expires_at" not in data and "expires_in" in data:
+                    data["expires_at"] = now + data["expires_in"]
+                if "refresh_token_expires_at" not in data and "refresh_token_expires_in" in data:
+                    data["refresh_token_expires_at"] = now + data["refresh_token_expires_in"]
             content = json.dumps(data) if isinstance(data, dict) else str(data)
             (self._garth_dir / filename).write_text(content)
 
