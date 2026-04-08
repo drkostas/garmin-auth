@@ -34,3 +34,6 @@ docs/plans/
 .garminconnect/
 .garmin-auth/
 tokens/
+
+# Claude Code local instructions (never committed)
+CLAUDE.md
