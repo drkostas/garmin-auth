@@ -1,9 +1,8 @@
-"""Shared fixtures for garmin-auth tests."""
+"""Shared fixtures for garmin-auth tests (garminconnect 0.3.0 token format)."""
 
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import pytest
@@ -18,70 +17,32 @@ def tmp_token_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def fresh_oauth1() -> dict:
-    """Valid OAuth1 token."""
+def fresh_token_payload() -> dict:
+    """A valid DI OAuth token payload (garminconnect 0.3.0 shape)."""
     return {
-        "oauth_token": "test-oauth1-token",
-        "oauth_token_secret": "test-oauth1-secret",
-        "domain": "garmin.com",
+        "di_token": "test-di-access-token",
+        "di_refresh_token": "test-di-refresh-token",
+        "di_client_id": "GARMIN_CONNECT_MOBILE_ANDROID_DI_2025Q2",
     }
 
 
 @pytest.fixture
-def fresh_oauth2() -> dict:
-    """Valid OAuth2 token with 24h remaining."""
-    return {
-        "access_token": "test-access-token",
-        "token_type": "Bearer",
-        "expires_in": 86400,
-        "expires_at": int(time.time()) + 86400,
-        "refresh_token": "test-refresh-token",
-        "refresh_token_expires_in": 7776000,
-        "refresh_token_expires_at": int(time.time()) + 7776000,
-    }
-
-
-@pytest.fixture
-def expired_oauth2() -> dict:
-    """Expired OAuth2 token."""
-    return {
-        "access_token": "expired-token",
-        "token_type": "Bearer",
-        "expires_in": 86400,
-        "expires_at": int(time.time()) - 3600,  # expired 1h ago
-        "refresh_token": "test-refresh-token",
-    }
-
-
-@pytest.fixture
-def fresh_tokens(fresh_oauth1: dict, fresh_oauth2: dict) -> dict:
-    """Complete token set with fresh OAuth2."""
-    return {
-        "oauth1_token.json": fresh_oauth1,
-        "oauth2_token.json": fresh_oauth2,
-    }
-
-
-@pytest.fixture
-def expired_tokens(fresh_oauth1: dict, expired_oauth2: dict) -> dict:
-    """Complete token set with expired OAuth2."""
-    return {
-        "oauth1_token.json": fresh_oauth1,
-        "oauth2_token.json": expired_oauth2,
-    }
-
-
-@pytest.fixture
-def token_dir_with_fresh_tokens(tmp_token_dir: Path, fresh_tokens: dict) -> Path:
-    """Temp directory pre-populated with fresh tokens."""
-    for filename, data in fresh_tokens.items():
-        (tmp_token_dir / filename).write_text(json.dumps(data))
+def token_dir_with_fresh_tokens(tmp_token_dir: Path, fresh_token_payload: dict) -> Path:
+    """Temp directory pre-populated with a fresh garmin_tokens.json file."""
+    (tmp_token_dir / "garmin_tokens.json").write_text(json.dumps(fresh_token_payload))
     return tmp_token_dir
 
 
 @pytest.fixture
-def token_dir_with_expired_tokens(tmp_token_dir: Path, expired_tokens: dict) -> Path:
-    """Temp directory pre-populated with expired tokens."""
-    for filename, data in expired_tokens.items():
-        (tmp_token_dir / filename).write_text(json.dumps(data))
+def legacy_oauth_tokens_file(tmp_token_dir: Path) -> Path:
+    """Temp directory pre-populated with legacy 0.2.x oauth1/oauth2 files.
+
+    These should be treated as stale and ignored by the 0.3.0 store.
+    """
+    (tmp_token_dir / "oauth1_token.json").write_text(
+        json.dumps({"oauth_token": "legacy", "oauth_token_secret": "legacy"})
+    )
+    (tmp_token_dir / "oauth2_token.json").write_text(
+        json.dumps({"access_token": "legacy", "expires_at": 9999999999})
+    )
     return tmp_token_dir

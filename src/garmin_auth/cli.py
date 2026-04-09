@@ -49,6 +49,11 @@ def _resolve_password(args: argparse.Namespace) -> str:
     return password
 
 
+def _prompt_mfa() -> str:
+    """Blocking prompt for the MFA code on stdin."""
+    return input("Garmin MFA code: ").strip()
+
+
 def _build_auth(args: argparse.Namespace, need_credentials: bool = False) -> GarminAuth:
     """Build GarminAuth from CLI args + env vars + config + interactive prompts."""
     store = FileTokenStore(args.token_dir)
@@ -67,6 +72,7 @@ def _build_auth(args: argparse.Namespace, need_credentials: bool = False) -> Gar
         password=password,
         store=store,
         token_dir=args.token_dir or "~/.garminconnect",
+        prompt_mfa=_prompt_mfa,
     )
 
 
@@ -74,6 +80,10 @@ def cmd_login(args: argparse.Namespace) -> None:
     """Login to Garmin Connect and save tokens."""
     auth = _build_auth(args, need_credentials=True)
     client = auth.login()
+    if client == "needs_mfa":
+        # Shouldn't happen in CLI mode — we passed a blocking prompt_mfa callback.
+        print("✗ Unexpected MFA state. This is a bug; please file an issue.", file=sys.stderr)
+        sys.exit(1)
 
     # Save email for next time
     config = _load_config()
@@ -82,8 +92,6 @@ def cmd_login(args: argparse.Namespace) -> None:
         _save_config(config)
 
     print(f"\n✓ Authenticated as: {client.display_name}")
-    status = auth.status()
-    print(f"  Token valid for {status['hours_remaining']}h")
     print(f"  Tokens saved to: {args.token_dir}")
     if config.get("email"):
         print(f"  Email saved to: {CONFIG_FILE}")
@@ -97,35 +105,33 @@ def cmd_status(args: argparse.Namespace) -> None:
     if result["status"] == "no_tokens":
         print("✗ No tokens found. Run: garmin-auth login")
         sys.exit(1)
-    elif result["status"] == "expired":
-        print(f"✗ Token expired ({abs(result['hours_remaining'])}h ago)")
-        print("  Run: garmin-auth refresh")
-        sys.exit(1)
     else:
-        print(f"✓ Token valid ({result['hours_remaining']}h remaining)")
-        print(f"  Expires: {result['oauth2_expires_at']}")
+        print("✓ Tokens present in store")
+        print(f"  Store: {result['store_type']}")
         if args.verbose:
             print(json.dumps(result, indent=2))
 
 
 def cmd_refresh(args: argparse.Namespace) -> None:
-    """Refresh tokens (exchange or full login)."""
-    # For refresh, try without credentials first, prompt only if needed
+    """Refresh the DI token via garminconnect's proactive refresh path."""
     auth = _build_auth(args, need_credentials=False)
     try:
         result = auth.refresh()
     except RuntimeError:
-        # Token exchange failed and no credentials — prompt for them
-        print("Token exchange failed. Credentials needed for full re-login.")
+        # Cached refresh failed — fall back to full login with credentials
+        print("Token refresh failed. Credentials needed for full re-login.")
         auth = _build_auth(args, need_credentials=True)
-        result = auth.refresh()
+        client = auth.login()
+        if client == "needs_mfa":
+            print("✗ Unexpected MFA state during refresh fallback.", file=sys.stderr)
+            sys.exit(1)
+        result = {"status": "refreshed", "display_name": client.display_name}
 
-    if result["status"] == "skipped":
-        print(f"✓ Token still valid ({result['message']})")
-    elif result["status"] == "refreshed":
-        print(f"✓ Token refreshed via {result['method']} (valid for {result['hours_valid']}h)")
+    if result["status"] == "refreshed":
+        name = result.get("display_name") or "unknown"
+        print(f"✓ Token refreshed (account: {name})")
     else:
-        print(f"✗ Refresh failed: {result}")
+        print(f"✗ Refresh returned unexpected status: {result}")
         sys.exit(1)
 
     if args.verbose:

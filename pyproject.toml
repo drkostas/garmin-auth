@@ -4,23 +4,25 @@ build-backend = "hatchling.build"
 
 [project]
 name = "garmin-auth"
-version = "0.2.1"
-description = "Self-healing Garmin Connect OAuth authentication — login, token refresh, and rate limit recovery"
+version = "0.3.0"
+description = "Self-healing Garmin Connect authentication with 2FA/MFA support, token refresh, and rate limit recovery"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "Konstantinos Georgiou", email = "delfinas7kostas@gmail.com" }]
 keywords = ["garmin", "oauth", "authentication", "garmin-connect", "fitness"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-    "garminconnect>=0.2.38,<0.3.0",
+    "garminconnect>=0.3.0,<0.4.0",
     "requests>=2.31",
+    "curl_cffi>=0.6",
+    "ua-generator>=1.0",
 ]
 
 [project.optional-dependencies]
