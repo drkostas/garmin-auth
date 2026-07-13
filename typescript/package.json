@@ -1,0 +1,46 @@
+{
+  "name": "garmin-auth",
+  "version": "0.4.0-ts.0",
+  "description": "Self-healing Garmin Connect OAuth (TypeScript) — token stores, rate limiting, DI auth. TS twin of the Python garmin-auth.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "garmin",
+    "garmin-connect",
+    "oauth",
+    "fit"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "github:drkostas/garmin-auth"
+  },
+  "peerDependencies": {
+    "pg": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/pg": "^8.0.0",
+    "pg": "^8.22.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
+  }
+}
