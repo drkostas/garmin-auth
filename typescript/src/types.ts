@@ -4,9 +4,3 @@ export interface DITokens {
   di_refresh_token: string;
   di_client_id: string;
 }
-export type LoginStatus = "authenticated" | "mfa_required" | "failed";
-export interface LoginResult {
-  status: LoginStatus;
-  client?: unknown;
-  clientState?: unknown; // for resuming an MFA flow
-}
