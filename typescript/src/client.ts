@@ -110,22 +110,48 @@ export class GarminClient {
     return res.json() as Promise<T>;
   }
 
-  /** POST a JSON body to a connectapi path, refreshing the DI token once on 401. */
-  async post<T = unknown>(path: string, body: unknown): Promise<T> {
+  /** Send a request to a connectapi path, refreshing the DI token once on 401. */
+  private async send<T>(method: string, path: string, init: () => RequestInit): Promise<T> {
     const url = `https://connectapi.${this.domain}${path}`;
-    const init = (): RequestInit => ({
-      method: "POST",
-      headers: { ...this.apiHeaders(), "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
     let res = await fetch(url, init());
     if (res.status === 401) {
       await this.refreshDiToken();
       res = await fetch(url, init());
     }
-    if (!res.ok) throw new GarminAuthenticationError(`connectapi POST ${path} → ${res.status}`);
+    if (!res.ok) throw new GarminAuthenticationError(`connectapi ${method} ${path} → ${res.status}`);
     if (res.status === 204) return undefined as T;
     const text = await res.text();
     return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  /** POST a JSON body to a connectapi path. */
+  async post<T = unknown>(path: string, body: unknown): Promise<T> {
+    return this.send<T>("POST", path, () => ({
+      method: "POST",
+      headers: { ...this.apiHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+  }
+
+  /** PUT a JSON body to a connectapi path. */
+  async put<T = unknown>(path: string, body: unknown): Promise<T> {
+    return this.send<T>("PUT", path, () => ({
+      method: "PUT",
+      headers: { ...this.apiHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }));
+  }
+
+  /**
+   * POST multipart/form-data to a connectapi path (e.g. activity image upload).
+   * Content-Type (with the boundary) is set by the runtime from the FormData
+   * body, so it is intentionally omitted from the headers.
+   */
+  async postForm<T = unknown>(path: string, form: FormData): Promise<T> {
+    return this.send<T>("POST", path, () => ({
+      method: "POST",
+      headers: this.apiHeaders(),
+      body: form,
+    }));
   }
 }
