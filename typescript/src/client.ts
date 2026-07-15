@@ -113,10 +113,13 @@ export class GarminClient {
   /** GET raw bytes from a connectapi path (e.g. the FIT download zip), refreshing on 401. */
   async getBytes(path: string): Promise<Uint8Array> {
     const url = `https://connectapi.${this.domain}${path}`;
-    let res = await fetch(url, { headers: this.apiHeaders() });
+    // Override Accept: apiHeaders() asks for JSON, but binary endpoints like the
+    // FIT download return a zip and reject application/json with HTTP 406.
+    const headers = () => ({ ...this.apiHeaders(), "Accept": "*/*" });
+    let res = await fetch(url, { headers: headers() });
     if (res.status === 401) {
       await this.refreshDiToken();
-      res = await fetch(url, { headers: this.apiHeaders() });
+      res = await fetch(url, { headers: headers() });
     }
     if (!res.ok) throw new GarminAuthenticationError(`connectapi GET(bytes) ${path} → ${res.status}`);
     return new Uint8Array(await res.arrayBuffer());
