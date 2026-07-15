@@ -109,4 +109,23 @@ export class GarminClient {
     if (res.status === 204) return undefined as T;
     return res.json() as Promise<T>;
   }
+
+  /** POST a JSON body to a connectapi path, refreshing the DI token once on 401. */
+  async post<T = unknown>(path: string, body: unknown): Promise<T> {
+    const url = `https://connectapi.${this.domain}${path}`;
+    const init = (): RequestInit => ({
+      method: "POST",
+      headers: { ...this.apiHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let res = await fetch(url, init());
+    if (res.status === 401) {
+      await this.refreshDiToken();
+      res = await fetch(url, init());
+    }
+    if (!res.ok) throw new GarminAuthenticationError(`connectapi POST ${path} → ${res.status}`);
+    if (res.status === 204) return undefined as T;
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
 }
