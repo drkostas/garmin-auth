@@ -37,3 +37,7 @@ tokens/
 
 # Claude Code local instructions (never committed)
 CLAUDE.md
+
+
+# Claude Code project MCP config (contains API keys)
+.mcp.json
