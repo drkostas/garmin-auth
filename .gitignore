@@ -41,3 +41,6 @@ CLAUDE.md
 
 # Claude Code project MCP config (contains API keys)
 .mcp.json
+
+# Internal docs stay local: this repo is public and these are working notes.
+docs/
