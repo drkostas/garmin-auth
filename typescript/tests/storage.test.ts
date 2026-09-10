@@ -44,4 +44,48 @@ describe("DBTokenStore (real DB, throwaway key)", () => {
     await store.save(payload);
     expect(JSON.parse((await store.load())!)).toEqual(payload);  // round-trip
   });
+
+  it.runIf(url)("a re-save restores status and connected_at, not just the payload", async () => {
+    // The regression this guards: setting status only in the INSERT branch left every login
+    // after the first with the row's existing value, so a status parked at the schema default
+    // of 'disconnected' never recovered even though the tokens were fine.
+    const { Client } = await import("pg");
+    const c = new Client({ connectionString: url });
+    await c.connect();
+    try {
+      await store.save(payload);
+      await c.query(
+        "UPDATE platform_credentials SET status = 'disconnected', connected_at = NULL WHERE platform = $1",
+        ["garmin_ts_test"],
+      );
+      await store.save({ ...payload, di_token: "second.login.tok" });
+      const { rows } = await c.query(
+        "SELECT status, auth_type, connected_at FROM platform_credentials WHERE platform = $1",
+        ["garmin_ts_test"],
+      );
+      expect(rows[0].status).toBe("active");
+      expect(rows[0].auth_type).toBe("oauth");
+      expect(rows[0].connected_at).not.toBeNull();
+      expect(JSON.parse((await store.load())!).di_token).toBe("second.login.tok");
+    } finally {
+      await c.end();
+    }
+  });
+});
+
+describe("DBTokenStore surfaces infrastructure failures (does not report them as 'no tokens')", () => {
+  // A host that cannot resolve stands in for any unreachable database.
+  const unreachable = new DBTokenStore("postgres://u:p@no-such-host.invalid:5432/db", "garmin_ts_test");
+
+  it("load throws rather than returning null", async () => {
+    await expect(unreachable.load()).rejects.toThrow();
+  });
+
+  it("save throws rather than reporting a success it did not achieve", async () => {
+    await expect(unreachable.save(payload)).rejects.toThrow();
+  });
+
+  it("delete throws rather than claiming it cleared the row", async () => {
+    await expect(unreachable.delete()).rejects.toThrow();
+  });
 });

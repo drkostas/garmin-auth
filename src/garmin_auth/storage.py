@@ -136,65 +136,83 @@ class DBTokenStore(TokenStore):
         return psycopg2.connect(self.database_url)
 
     def load(self) -> Optional[str]:
-        try:
-            with self._connect() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "SELECT credentials FROM platform_credentials "
-                    "WHERE platform = %s LIMIT 1",
-                    (self.platform,),
-                )
-                row = cur.fetchone()
-                if not row or not row[0]:
-                    return None
-                creds = row[0] if isinstance(row[0], dict) else json.loads(row[0])
-                # New format: payload stored under "garmin_tokens"
-                if isinstance(creds, dict) and "garmin_tokens" in creds:
-                    payload = creds["garmin_tokens"]
-                    if isinstance(payload, dict):
-                        if "di_token" not in payload:
-                            return None
-                        return json.dumps(payload)
-                    return payload if isinstance(payload, str) else None
-                # Legacy 0.2.x format had oauth1/oauth2 keys — treat as stale
-                if isinstance(creds, dict) and (
-                    "oauth1_token.json" in creds or "oauth2_token.json" in creds
-                ):
-                    logger.info(
-                        "DB has legacy oauth1/oauth2 tokens (garmin-auth <0.3). "
-                        "Rejecting and forcing re-auth."
-                    )
-                    return None
+        """Return the stored payload, or None when there are genuinely no usable tokens.
+
+        Only an absent or unreadable row returns None. A connection or query failure is
+        raised, because "I could not reach the database" and "there are no tokens" lead a
+        caller to opposite conclusions: the first needs the database fixed, the second needs
+        the user to log in again. Reporting the first as the second sends you looking at the
+        credential, which is the one thing that is not wrong.
+        """
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT credentials FROM platform_credentials "
+                "WHERE platform = %s LIMIT 1",
+                (self.platform,),
+            )
+            row = cur.fetchone()
+            if not row or not row[0]:
                 return None
-        except Exception as e:
-            logger.warning("DB token load failed: %s", e)
+            try:
+                creds = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            except (TypeError, ValueError):
+                logger.warning("Token row holds unreadable credentials; treating as absent.")
+                return None
+            # New format: payload stored under "garmin_tokens"
+            if isinstance(creds, dict) and "garmin_tokens" in creds:
+                payload = creds["garmin_tokens"]
+                if isinstance(payload, dict):
+                    if "di_token" not in payload:
+                        return None
+                    return json.dumps(payload)
+                return payload if isinstance(payload, str) else None
+            # Legacy 0.2.x format had oauth1/oauth2 keys — treat as stale
+            if isinstance(creds, dict) and (
+                "oauth1_token.json" in creds or "oauth2_token.json" in creds
+            ):
+                logger.info(
+                    "DB has legacy oauth1/oauth2 tokens (garmin-auth <0.3). "
+                    "Rejecting and forcing re-auth."
+                )
+                return None
             return None
 
     def save(self, tokens: str | dict) -> None:
+        """Persist the token payload. Raises if the write does not land.
+
+        This used to swallow every error, which turned losing a user's tokens into a reported
+        success: a login path could answer "connected" having written nothing at all.
+
+        The update half restores ``status``, ``auth_type`` and ``connected_at`` as well as the
+        payload. Setting them only in the INSERT branch left every login after the first with
+        whatever the row already had, so a ``status`` sitting at the schema default of
+        'disconnected' stayed there forever while the tokens underneath it were fine.
+        """
         payload = (
             tokens if isinstance(tokens, dict) else json.loads(_normalize(tokens))
         )
         wrapped = json.dumps({"garmin_tokens": payload})
-        try:
-            with self._connect() as conn, conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO platform_credentials (platform, auth_type, credentials, status)
-                    VALUES (%s, 'oauth', %s, 'active')
-                    ON CONFLICT (platform) DO UPDATE SET credentials = EXCLUDED.credentials
-                    """,
-                    (self.platform, wrapped),
-                )
-                conn.commit()
-        except Exception as e:
-            logger.warning("DB token save failed: %s", e)
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO platform_credentials
+                    (platform, auth_type, credentials, status, connected_at)
+                VALUES (%s, 'oauth', %s, 'active', now())
+                ON CONFLICT (platform) DO UPDATE
+                    SET credentials  = EXCLUDED.credentials,
+                        auth_type    = EXCLUDED.auth_type,
+                        status       = EXCLUDED.status,
+                        connected_at = EXCLUDED.connected_at
+                """,
+                (self.platform, wrapped),
+            )
+            conn.commit()
 
     def delete(self) -> None:
-        try:
-            with self._connect() as conn, conn.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM platform_credentials WHERE platform = %s",
-                    (self.platform,),
-                )
-                conn.commit()
-        except Exception as e:
-            logger.warning("DB token delete failed: %s", e)
+        """Remove the stored tokens. Raises if the delete does not land."""
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM platform_credentials WHERE platform = %s",
+                (self.platform,),
+            )
+            conn.commit()
