@@ -4,6 +4,41 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Python 0.4.0 / npm 0.5.0] — the token store stops lying
+
+`DBTokenStore` reported success it had not achieved and absence it had not verified. Three
+downstream failures came out of that, and all of them looked like something else:
+
+- A Garmin login on the npm side could not persist at all, and still answered "connected".
+  `DBTokenStore` opens its own client through `pg`, which was declared as an **optional** peer
+  dependency, and npm does not install optional peers. So `require("pg")` threw, `save()` caught
+  it and returned normally, and nothing was ever written. Every fresh install of a consumer that
+  did not happen to depend on `pg` itself was affected. The Python half had the same hole through
+  the `psycopg2` extra.
+- A row written by anything other than the very first login kept a `status` of `'disconnected'`
+  forever, because the upsert set the flags only in its INSERT branch. Consumers that trusted the
+  column showed a working connection as disconnected.
+- A database that could not be reached was reported as "there are no tokens", which reads as an
+  expired credential. That points every investigation at the one thing that is not wrong.
+
+### Changed (breaking within 0.x)
+- `DBTokenStore.save()`, `.load()` and `.delete()` now raise when the database cannot be reached
+  or the statement fails. `load()` returns `None` only when the row is genuinely absent, empty, of
+  the legacy 0.2.x oauth1/oauth2 shape, or holds credentials that will not parse.
+- `GarminAuth`'s token persistence no longer swallows failures, and it now runs outside the block
+  that catches authentication errors, so a storage fault can never be reported as `needs_mfa`.
+- The upsert restores `status`, `auth_type` and `connected_at` alongside the payload, so a
+  re-login repairs a stale row instead of leaving its flags behind.
+- npm: `pg` moved from an optional peer dependency to a regular dependency. Installing
+  `garmin-auth` now installs a working `DBTokenStore`. Consumers that already declare `pg` need no
+  change.
+
+### Migration
+Callers that relied on these methods never throwing must handle errors. The shape that was
+previously silent, and is now loud, is a broken database or a missing driver, both of which need
+fixing rather than ignoring. Code that wants a token store to survive a rejection without
+destroying a shared credential should override `delete()`.
+
 ## [0.3.0] — Garmin 2FA support, native auth engine (breaking 0.x change)
 
 This release rewrites the auth layer on top of `garminconnect>=0.3.0`, which

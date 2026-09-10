@@ -224,9 +224,6 @@ class GarminAuth:
                 logger.info("Cached login triggered MFA — clearing stale tokens")
                 self.store.delete()
                 return None
-            # Persist any refreshed tokens back to the store
-            self._persist_client_tokens(client)
-            return client
         except GarminConnectAuthenticationError as e:
             logger.info("Cached token rejected (will re-login): %s", e)
             self.store.delete()
@@ -237,18 +234,22 @@ class GarminAuth:
         except Exception as e:
             logger.debug("Cached login unexpected error: %s", e)
             return None
+        # The tokens are good. Persisting happens outside the block above so that a storage
+        # failure is never caught by it: losing a refreshed token is a storage fault, and
+        # reporting it as an authentication one would send the caller down the re-login path
+        # over a perfectly healthy credential.
+        self._persist_client_tokens(client)
+        return client
 
     def _persist_client_tokens(self, client: Garmin) -> None:
-        """Dump the client's tokens and save them to the store."""
-        try:
-            blob: str = client.client.dumps()
-        except Exception as e:
-            logger.warning("Could not serialize client tokens: %s", e)
-            return
-        try:
-            self.store.save(blob)
-        except Exception as e:
-            logger.warning("Could not save tokens to store: %s", e)
+        """Dump the client's tokens and save them to the store.
+
+        Raises if the tokens cannot be serialized or the store cannot save them. Both used to
+        be warnings, which meant a refreshed token could be dropped on the floor while the
+        caller was told the login had succeeded.
+        """
+        blob: str = client.client.dumps()
+        self.store.save(blob)
 
     def _write_tokens_to_disk(self, tokens: str) -> Path:
         """Materialise token JSON as a file garminconnect can load."""

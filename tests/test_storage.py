@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from garmin_auth.storage import FileTokenStore
 
 
@@ -113,22 +115,73 @@ class TestDBTokenStore:
         store = DBTokenStore("postgresql://fake:fake@localhost/fake")
         assert store.database_url == "postgresql://fake:fake@localhost/fake"
 
-    def test_load_returns_none_on_connection_failure(self) -> None:
+    # These three previously asserted the opposite: that a store which could not reach the
+    # database returned None or reported a success anyway. That is what made a broken database
+    # look like an expired credential, and a lost token look like a saved one. An unreachable
+    # store must say so.
+
+    def test_load_raises_on_connection_failure(self) -> None:
         from garmin_auth.storage import DBTokenStore
 
         store = DBTokenStore("postgresql://fake:fake@localhost:5432/fake")
-        assert store.load() is None
+        with pytest.raises(Exception):
+            store.load()
 
-    def test_save_does_not_crash_on_connection_failure(
-        self, fresh_token_payload: dict
-    ) -> None:
+    def test_save_raises_on_connection_failure(self, fresh_token_payload: dict) -> None:
         from garmin_auth.storage import DBTokenStore
 
         store = DBTokenStore("postgresql://fake:fake@localhost:5432/fake")
-        store.save(fresh_token_payload)  # should log warning, not raise
+        with pytest.raises(Exception):
+            store.save(fresh_token_payload)
 
-    def test_delete_does_not_crash_on_connection_failure(self) -> None:
+    def test_delete_raises_on_connection_failure(self) -> None:
         from garmin_auth.storage import DBTokenStore
 
         store = DBTokenStore("postgresql://fake:fake@localhost:5432/fake")
-        store.delete()  # should log warning, not raise
+        with pytest.raises(Exception):
+            store.delete()
+
+    def test_save_upsert_restores_status_auth_type_and_connected_at(self) -> None:
+        """The update half must rewrite the flags, not only the payload.
+
+        Setting them in the INSERT branch alone left every login after the first with whatever
+        the row already held, so a status parked at the schema default of 'disconnected' stayed
+        there while the tokens underneath it were healthy.
+        """
+        from garmin_auth.storage import DBTokenStore
+
+        captured: list[str] = []
+
+        class FakeCursor:
+            def execute(self, sql: str, params: object = None) -> None:
+                captured.append(" ".join(sql.split()))
+
+            def __enter__(self) -> "FakeCursor":
+                return self
+
+            def __exit__(self, *a: object) -> None:
+                return None
+
+        class FakeConn:
+            def cursor(self) -> FakeCursor:
+                return FakeCursor()
+
+            def commit(self) -> None:
+                return None
+
+            def __enter__(self) -> "FakeConn":
+                return self
+
+            def __exit__(self, *a: object) -> None:
+                return None
+
+        store = DBTokenStore("postgresql://fake:fake@localhost:5432/fake")
+        store._connect = lambda: FakeConn()  # type: ignore[method-assign]
+        store.save({"di_token": "t", "di_refresh_token": "r", "di_client_id": "c"})
+
+        sql = captured[0]
+        assert "ON CONFLICT (platform) DO UPDATE" in sql
+        assert "credentials = EXCLUDED.credentials" in sql
+        assert "status = EXCLUDED.status" in sql
+        assert "auth_type = EXCLUDED.auth_type" in sql
+        assert "connected_at = EXCLUDED.connected_at" in sql

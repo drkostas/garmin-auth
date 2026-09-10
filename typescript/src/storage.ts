@@ -89,6 +89,15 @@ export class DBTokenStore implements TokenStore {
     return client;
   }
 
+  /**
+   * The stored payload, or null when there genuinely are no usable tokens.
+   *
+   * Only the absence or unreadability of the row returns null. A connection or query failure
+   * throws, because "I could not reach the database" and "there are no tokens" lead a caller to
+   * opposite conclusions: the first needs the database fixed, the second needs the user to log in
+   * again. Reporting the first as the second sends you looking at the credential, which is the
+   * one thing that is not wrong.
+   */
   async load(): Promise<string | null> {
     let c: PgClientLike | null = null;
     try {
@@ -99,7 +108,12 @@ export class DBTokenStore implements TokenStore {
       );
       if (!rows.length || !rows[0].credentials) return null;
       const raw = rows[0].credentials;
-      const creds = typeof raw === "string" ? JSON.parse(raw) : raw;
+      let creds: unknown;
+      try {
+        creds = typeof raw === "string" ? JSON.parse(raw) : raw;
+      } catch {
+        return null; // the column holds something that is not JSON: no usable tokens
+      }
       if (creds && typeof creds === "object" && "garmin_tokens" in creds) {
         const payload = (creds as Record<string, unknown>).garmin_tokens;
         if (payload && typeof payload === "object") {
@@ -113,13 +127,22 @@ export class DBTokenStore implements TokenStore {
         return null;
       }
       return null;
-    } catch {
-      return null;
     } finally {
       if (c) await c.end().catch(() => {});
     }
   }
 
+  /**
+   * Persist the token payload. Throws if the write does not land.
+   *
+   * This used to swallow every error, which turned losing a user's tokens into a reported
+   * success: a login route could answer "connected" having written nothing at all.
+   *
+   * The update half restores `status`, `auth_type` and `connected_at` as well as the payload.
+   * Setting them only in the INSERT branch left every login after the first with whatever the
+   * row already had, so a `status` sitting at the schema default of 'disconnected' stayed there
+   * forever while the tokens underneath it were fine.
+   */
   async save(tokens: string | Record<string, unknown>): Promise<void> {
     const payload = typeof tokens === "string" ? JSON.parse(normalize(tokens)) : tokens;
     const wrapped = JSON.stringify({ garmin_tokens: payload });
@@ -127,25 +150,26 @@ export class DBTokenStore implements TokenStore {
     try {
       c = await this.connect();
       await c.query(
-        `INSERT INTO platform_credentials (platform, auth_type, credentials, status)
-         VALUES ($1, 'oauth', $2, 'active')
-         ON CONFLICT (platform) DO UPDATE SET credentials = EXCLUDED.credentials`,
+        `INSERT INTO platform_credentials (platform, auth_type, credentials, status, connected_at)
+         VALUES ($1, 'oauth', $2, 'active', now())
+         ON CONFLICT (platform) DO UPDATE
+           SET credentials  = EXCLUDED.credentials,
+               auth_type    = EXCLUDED.auth_type,
+               status       = EXCLUDED.status,
+               connected_at = EXCLUDED.connected_at`,
         [this.platform, wrapped],
       );
-    } catch {
-      /* best-effort save, matches Python */
     } finally {
       if (c) await c.end().catch(() => {});
     }
   }
 
+  /** Remove the stored tokens. Throws if the delete does not land. */
   async delete(): Promise<void> {
     let c: PgClientLike | null = null;
     try {
       c = await this.connect();
       await c.query("DELETE FROM platform_credentials WHERE platform = $1", [this.platform]);
-    } catch {
-      /* best-effort */
     } finally {
       if (c) await c.end().catch(() => {});
     }

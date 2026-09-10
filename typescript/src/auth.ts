@@ -78,8 +78,6 @@ export class GarminAuth {
       client.loads(tokens);
       // Validate + proactively refresh by making a lightweight authenticated call.
       await client.connectapi("/userprofile-service/socialProfile");
-      await this.persist(client); // persist any refreshed DI token
-      return client;
     } catch (e) {
       if (e instanceof GarminAuthenticationError) {
         await this.store.delete(); // stale → clear
@@ -87,13 +85,14 @@ export class GarminAuth {
       }
       return null; // transient
     }
+    // The tokens are good. Persisting happens outside the block above so that a storage failure
+    // is never caught by it: losing a refreshed token is a storage fault, and reporting it as an
+    // authentication one would send the caller down the needs_mfa path over a healthy credential.
+    await this.persist(client);
+    return client;
   }
 
   private async persist(client: GarminClient): Promise<void> {
-    try {
-      await this.store.save(client.dumps());
-    } catch {
-      /* best-effort, matches Python */
-    }
+    await this.store.save(client.dumps());
   }
 }
