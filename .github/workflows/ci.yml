@@ -31,3 +31,75 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v
+
+  typescript:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # DATABASE_URL is deliberately unset: the live-Garmin integration tests are runIf-gated
+      # on it and need real tokens, so they skip here while the unit tests still run.
+      - name: Run tests
+        run: npm test
+
+  npm-consumer:
+    # Installs the package the way a consumer gets it, with no devDependencies in sight.
+    # This is the job that was missing: `pg` was an optional peer dependency, npm does not
+    # install optional peers, and the repo's own devDependencies hid that from every test we
+    # had. In a real install DBTokenStore could not load its driver at all.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build and pack
+        working-directory: typescript
+        run: |
+          npm ci
+          npm run build
+          npm pack --pack-destination /tmp
+
+      - name: Install the tarball into a bare project
+        run: |
+          mkdir -p /tmp/consumer && cd /tmp/consumer
+          npm init -y >/dev/null
+          npm install --omit=dev /tmp/garmin-auth-*.tgz
+
+      - name: DBTokenStore must reach its driver, and must report failure
+        run: |
+          cd /tmp/consumer
+          cat > check.js <<'EOF'
+          const { DBTokenStore } = require("garmin-auth");
+          // Nothing listens on port 1, so a store that can load its driver fails to connect.
+          const store = new DBTokenStore("postgres://u:p@127.0.0.1:1/nodb");
+          store.load().then(
+            () => { console.error("FAIL: load() resolved against an unreachable database"); process.exit(1); },
+            (err) => {
+              const msg = String(err && err.message);
+              if (/pg is required/.test(msg)) {
+                console.error("FAIL: pg is not installed for a plain consumer:", msg);
+                process.exit(1);
+              }
+              console.log("OK: reached the driver and surfaced the failure:", msg.slice(0, 80));
+            },
+          );
+          EOF
+          node check.js
