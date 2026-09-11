@@ -167,6 +167,17 @@ pytest tests/ -v
 - **Garmin rate limits** — Garmin aggressively rate-limits auth attempts (429). The package handles retries with backoff, but excessive calls in a short period may require waiting 1-24 hours
 - **First-run upgrade from 0.2.x** — the token format changed; users upgrading from garmin-auth 0.2.x must log in again once (cached tokens from the old format are rejected cleanly)
 
+## Garmin data parsers (0.6.0)
+
+Besides auth and the client, the package now carries the parsers of what Garmin Connect returns, moved from soma so every consumer reads the payloads the same way:
+
+- `endpoints`: the daily, range, activity-detail and discovery request catalogue and `buildRequest`.
+- `health-parsers`: `parseDailyHealth`, `parseWeightEntries`, `parseSleep`, `parseHrv`, `parseTrainingReadiness`.
+- `lap-parser`: `parseStructuredLaps`, `parseUnstructuredLaps`.
+- `activity-routes`: `deriveRouteSamples`, `thinSamples` (GPS samples per activity).
+
+Each module is a subpath export (`garmin-auth/health-parsers`), so a consumer that only parses does not load the token store and its `pg` dependency. Storing rows stays with the consumer.
+
 ## License
 
 MIT

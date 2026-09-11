@@ -3,3 +3,7 @@ export * from "./rate-limiter";
 export * from "./types";
 export * from "./client";
 export * from "./auth";
+export * from "./endpoints";
+export * from "./health-parsers";
+export * from "./lap-parser";
+export * from "./activity-routes";

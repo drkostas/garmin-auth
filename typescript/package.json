@@ -1,21 +1,60 @@
 {
   "name": "garmin-auth",
-  "version": "0.5.0",
-  "description": "Self-healing Garmin Connect OAuth (TypeScript) — token stores, rate limiting, DI auth. TS twin of the Python garmin-auth.",
+  "version": "0.6.0",
+  "description": "Self-healing Garmin Connect OAuth (TypeScript) \u2014 token stores, rate limiting, DI auth. TS twin of the Python garmin-auth.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "default": "./dist/storage.js"
+    },
+    "./rate-limiter": {
+      "types": "./dist/rate-limiter.d.ts",
+      "default": "./dist/rate-limiter.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./auth": {
+      "types": "./dist/auth.d.ts",
+      "default": "./dist/auth.js"
+    },
+    "./endpoints": {
+      "types": "./dist/endpoints.d.ts",
+      "default": "./dist/endpoints.js"
+    },
+    "./health-parsers": {
+      "types": "./dist/health-parsers.d.ts",
+      "default": "./dist/health-parsers.js"
+    },
+    "./lap-parser": {
+      "types": "./dist/lap-parser.d.ts",
+      "default": "./dist/lap-parser.js"
+    },
+    "./activity-routes": {
+      "types": "./dist/activity-routes.d.ts",
+      "default": "./dist/activity-routes.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "clean": "rm -rf dist",
+    "prepack": "npm run clean && npm run build"
   },
   "keywords": [
     "garmin",
