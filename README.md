@@ -4,6 +4,9 @@
 [![PyPI](https://img.shields.io/pypi/v/garmin-auth)](https://pypi.org/project/garmin-auth/)
 [![Python](https://img.shields.io/pypi/pyversions/garmin-auth)](https://pypi.org/project/garmin-auth/)
 
+> **Python package deprecated, end date 2026-10-31.** It exists for hevy2garmin's Python side, which is being retired. Use the npm package `garmin-auth` (`npm install garmin-auth`); see the [CHANGELOG](CHANGELOG.md).
+
+
 Self-healing Garmin Connect authentication for Python, with 2FA/MFA support.
 
 Wraps `garminconnect>=0.3.0` with token persistence, retry-aware rate limiting, and a CLI so you don't have to re-plumb auth for every project.
@@ -22,6 +25,8 @@ The upstream [`garminconnect`](https://pypi.org/project/garminconnect/) library 
 ```bash
 pip install garmin-auth
 ```
+
+> Deprecated: no releases after 2026-10-31.
 
 ## Quick Start
 
