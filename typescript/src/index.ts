@@ -7,3 +7,4 @@ export * from "./endpoints";
 export * from "./health-parsers";
 export * from "./lap-parser";
 export * from "./activity-routes";
+export * from "./sso-worker";
