@@ -1,6 +1,6 @@
 {
   "name": "garmin-auth",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Self-healing Garmin Connect OAuth (TypeScript) \u2014 token stores, rate limiting, DI auth. TS twin of the Python garmin-auth.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -45,7 +45,11 @@
       "types": "./dist/activity-routes.d.ts",
       "default": "./dist/activity-routes.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./sso-worker": {
+      "types": "./dist/sso-worker.d.ts",
+      "default": "./dist/sso-worker.js"
+    }
   },
   "files": [
     "dist"

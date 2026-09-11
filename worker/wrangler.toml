@@ -1,0 +1,12 @@
+name = "garmin-auth-sso"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Short-lived storage for pending MFA login sessions (~10 minute TTL set
+# per-put in index.js). Keyed by the session id handed to the browser between
+# /login and /login-mfa. Create your own namespace with
+#   wrangler kv namespace create MFA_SESSIONS
+# and put its id here.
+[[kv_namespaces]]
+binding = "MFA_SESSIONS"
+id = "76080c1af7674cef98450331359f05ac"
