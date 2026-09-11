@@ -4,6 +4,11 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Python 0.4.1] — the PyPI package is deprecated, end date 2026-10-31
+
+### Deprecated
+- The Python package exists for hevy2garmin's Python side, which is being retired (hevy2garmin 0.11.0 announces it). No releases after **2026-10-31**; after that date it is marked deprecated on PyPI and `src/`, `tests/` and the Python CI/publish steps are removed from this repository. The npm package `garmin-auth` is the product: the same auth engine, token store and now the Garmin payload parsers.
+
 ## [Python 0.4.0 / npm 0.5.0] — the token store stops lying
 
 `DBTokenStore` reported success it had not achieved and absence it had not verified. Three
