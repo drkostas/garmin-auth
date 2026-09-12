@@ -157,6 +157,11 @@ export class GarminClient {
     }));
   }
 
+  /** DELETE a connectapi path (e.g. a workout the plan no longer wants on the calendar). */
+  async delete<T = unknown>(path: string): Promise<T> {
+    return this.send<T>("DELETE", path, () => ({ method: "DELETE", headers: this.apiHeaders() }));
+  }
+
   /**
    * POST multipart/form-data to a connectapi path (e.g. activity image upload).
    * Content-Type (with the boundary) is set by the runtime from the FormData

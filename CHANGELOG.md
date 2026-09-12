@@ -4,6 +4,10 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [npm 0.7.1] — the client can DELETE
+
+- `GarminClient.delete(path)`: a DELETE against a connectapi path, with the same one-time DI token refresh on 401 as `post` and `put`. soma uses it to take a dropped training plan's pushed workouts off the Garmin calendar (soma#926).
+
 ## [Python 0.4.1] — the PyPI package is deprecated, end date 2026-10-31
 
 ### Deprecated
