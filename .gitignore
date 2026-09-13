@@ -41,3 +41,6 @@ CLAUDE.md
 
 # Claude Code project MCP config (contains API keys)
 .mcp.json
+
+# wrangler state (the account file carries the Cloudflare account id)
+worker/.wrangler/

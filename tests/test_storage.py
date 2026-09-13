@@ -120,25 +120,34 @@ class TestDBTokenStore:
     # look like an expired credential, and a lost token look like a saved one. An unreachable
     # store must say so.
 
+    # These three used to accept ANY exception, and in CI (installed with ".[dev]", no psycopg2)
+    # they passed on the ImportError from the missing driver, so the connection-failure path they
+    # name was never exercised there (garmin-auth debugging pass, 2026-09-13). The driver is now
+    # required for them, and the exception asserted is the driver's own connection error.
+    @staticmethod
+    def _connection_error() -> type[Exception]:
+        psycopg2 = pytest.importorskip("psycopg2", reason="the DB extra is required for the connection-failure tests")
+        return psycopg2.OperationalError
+
     def test_load_raises_on_connection_failure(self) -> None:
         from garmin_auth.storage import DBTokenStore
 
         store = DBTokenStore("postgresql://fake:fake@localhost:5432/fake")
-        with pytest.raises(Exception):
+        with pytest.raises(self._connection_error()):
             store.load()
 
     def test_save_raises_on_connection_failure(self, fresh_token_payload: dict) -> None:
         from garmin_auth.storage import DBTokenStore
 
         store = DBTokenStore("postgresql://fake:fake@localhost:5432/fake")
-        with pytest.raises(Exception):
+        with pytest.raises(self._connection_error()):
             store.save(fresh_token_payload)
 
     def test_delete_raises_on_connection_failure(self) -> None:
         from garmin_auth.storage import DBTokenStore
 
         store = DBTokenStore("postgresql://fake:fake@localhost:5432/fake")
-        with pytest.raises(Exception):
+        with pytest.raises(self._connection_error()):
             store.delete()
 
     def test_save_upsert_restores_status_auth_type_and_connected_at(self) -> None:

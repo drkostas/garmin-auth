@@ -21,7 +21,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package with dev dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,db]"
 
       - name: Import check
         run: python -c "from garmin_auth import GarminAuth, RateLimiter, FileTokenStore; print('OK')"
@@ -43,7 +43,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install
         run: npm ci
@@ -68,7 +68,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Build and pack
         working-directory: typescript
@@ -103,3 +103,19 @@ jobs:
           );
           EOF
           node check.js
+
+  worker:
+    # The SSO Worker's own tests (node --test); nothing ran them before 2026-09-13.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Syntax
+        run: node --check index.js
+      - name: Tests
+        run: npm test

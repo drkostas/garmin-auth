@@ -1,0 +1,9 @@
+{
+  "name": "garmin-auth-sso-worker",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker: Garmin DI OAuth proxy for the garmin-auth clients. Deployed with wrangler; tests run with node --test.",
+  "scripts": {
+    "test": "node --test index.test.mjs"
+  }
+}
