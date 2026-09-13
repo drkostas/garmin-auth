@@ -24,5 +24,5 @@ The Worker URL is then `https://garmin-auth-sso.<your-subdomain>.workers.dev`. P
 ## Tests
 
 ```bash
-node --test worker/
+node --test worker/index.test.mjs   # or: cd worker && npm test
 ```

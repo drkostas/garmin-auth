@@ -4,6 +4,14 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [npm 0.7.0] — one Garmin SSO Worker for the ecosystem (#47)
+
+- `garmin-auth/sso-worker`: the client for the Cloudflare Worker that performs the Garmin DI login, MFA continuation and token exchange from an IP Garmin accepts; the Worker source lives in `worker/` and is the only copy (hevy2garmin's copies were deleted).
+
+## [npm 0.6.0] — the Garmin parsers move in (#46)
+
+- The activity, sleep and daily-summary parsers that soma's sync pipeline used to carry are exported from the package, so every consumer reads Garmin's raw JSON the same way.
+
 ## [npm 0.7.1] — the client can DELETE
 
 - `GarminClient.delete(path)`: a DELETE against a connectapi path, with the same one-time DI token refresh on 401 as `post` and `put`. soma uses it to take a dropped training plan's pushed workouts off the Garmin calendar (soma#926).

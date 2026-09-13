@@ -1,8 +1,9 @@
 /**
  * Cloudflare Worker: Garmin DI OAuth authentication proxy.
  *
- * Runs alongside the legacy `hevy2garmin-exchange` worker. This worker
- * serves the garmin-auth >= 0.3.0 DI OAuth token format.
+ * The one Garmin SSO worker of the ecosystem (garmin-auth#47): the earlier
+ * hevy2garmin copies were deleted on 2026-09-11. It serves the garmin-auth
+ * >= 0.3.0 DI OAuth token format.
  *
  * Endpoints:
  *
