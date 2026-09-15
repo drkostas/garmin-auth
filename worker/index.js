@@ -89,6 +89,19 @@ const CORS_HEADERS = {
 
 // MFA session TTL — Garmin's pending MFA login state typically expires
 // within a few minutes, so we don't bother keeping KV entries around longer.
+// ── /oauth2 — refresh a Garmin OAuth1 pair into an OAuth2 token ────────────
+// Restored from hevy2garmin@c38b267^:worker/index.js. The consolidation (#47,
+// hevy2garmin#520) carried /exchange, /login and /login-mfa across but dropped
+// this route, because only soma's Strava bridge called it. That bridge then
+// failed every scheduled run for 38 hours against a 404 (#59).
+//
+// This is a different flow from /exchange: that one redeems a DI service
+// ticket, this one signs an OAuth1 request with the garth consumer
+// credentials, which is why none of the signing helpers below already existed.
+const CONSUMER_URL = "https://thegarth.s3.amazonaws.com/oauth_consumer.json";
+const API_BASE = "https://connectapi.garmin.com";
+const USER_AGENT = "com.garmin.android.apps.connectmobile";
+
 const MFA_SESSION_TTL_SECONDS = 600;
 
 // Rate-limit cooldown (#214). When Garmin returns a 429 for a login, we stash a
@@ -128,6 +141,9 @@ export default {
       }
       if (path === "/login-mfa") {
         return await handleLoginMfa(request, env);
+      }
+      if (path === "/oauth2") {
+        return await handleOauth2Refresh(request);
       }
       return json({ error: `Unknown path: ${path}` }, 404);
     } catch (e) {
@@ -719,4 +735,181 @@ function mergeCookieStrings(a, b) {
 /** Helper to build a JSON Response with CORS headers. */
 function json(body, status = 200) {
   return Response.json(body, { status, headers: CORS_HEADERS });
+}
+
+
+// ── /oauth2 handler and its OAuth1 signing chain ──────────────────────────
+
+async function handleOauth2Refresh(request) {
+  const { oauth_token, oauth_token_secret } = await request.json();
+  if (!oauth_token || !oauth_token_secret) {
+    return json({ error: "Missing oauth1 token" }, 400);
+  }
+  const consumerResp = await fetch(CONSUMER_URL);
+  const consumer = await consumerResp.json();
+  const exchangeUrl = `${API_BASE}/oauth-service/oauth/exchange/user/2.0`;
+  const header = buildOAuth1Header(
+    "POST", exchangeUrl, consumer.consumer_key, consumer.consumer_secret, oauth_token, oauth_token_secret
+  );
+  const resp = await fetch(exchangeUrl, {
+    method: "POST",
+    headers: {
+      Authorization: header,
+      "User-Agent": USER_AGENT,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    return json({ error: `oauth2 exchange ${resp.status}: ${text.slice(0, 200)}` }, 502);
+  }
+  const oauth2 = await resp.json();
+  const now = Math.floor(Date.now() / 1000);
+  if (oauth2.expires_in && !oauth2.expires_at) oauth2.expires_at = now + oauth2.expires_in;
+  if (oauth2.refresh_token_expires_in && !oauth2.refresh_token_expires_at) {
+    oauth2.refresh_token_expires_at = now + oauth2.refresh_token_expires_in;
+  }
+  return json({ oauth2 });
+}
+
+function buildOAuth1Header(method, fullUrl, consumerKey, consumerSecret, token = "", tokenSecret = "") {
+  const [baseUrl, queryString] = fullUrl.split("?");
+  const nonce = crypto.randomUUID().replace(/-/g, "");
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+
+  const oauthParams = {
+    oauth_consumer_key: consumerKey,
+    oauth_nonce: nonce,
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: timestamp,
+    oauth_version: "1.0",
+  };
+  if (token) oauthParams.oauth_token = token;
+
+  // Collect all params (oauth + query string)
+  const allParams = { ...oauthParams };
+  if (queryString) {
+    for (const part of queryString.split("&")) {
+      const [k, v] = part.split("=");
+      allParams[decodeURIComponent(k)] = decodeURIComponent(v || "");
+    }
+  }
+
+  // Build signature base string
+  const sortedParams = Object.keys(allParams)
+    .sort()
+    .map((k) => `${enc(k)}=${enc(allParams[k])}`)
+    .join("&");
+  const baseString = `${method.toUpperCase()}&${enc(baseUrl)}&${enc(sortedParams)}`;
+  const signingKey = `${enc(consumerSecret)}&${enc(tokenSecret)}`;
+
+  const signature = hmacSha1(signingKey, baseString);
+  oauthParams.oauth_signature = signature;
+
+  const header = Object.entries(oauthParams)
+    .map(([k, v]) => `${enc(k)}="${enc(v)}"`)
+    .join(", ");
+  return `OAuth ${header}`;
+}
+
+function enc(s) {
+  return encodeURIComponent(s).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+}
+
+function hmacSha1(key, data) {
+  // Use Web Crypto API synchronously via crypto.subtle workaround
+  // Cloudflare Workers support top-level await and crypto.subtle
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const msgData = encoder.encode(data);
+
+  // We need sync HMAC but Workers only have async crypto.subtle
+  // Use a synchronous fallback
+  return hmacSha1Sync(keyData, msgData);
+}
+
+function hmacSha1Sync(keyBytes, msgBytes) {
+  // SHA1 HMAC implementation for Cloudflare Workers
+  // Key padding
+  const blockSize = 64;
+  let key = keyBytes;
+  if (key.length > blockSize) {
+    key = sha1(key);
+  }
+  const paddedKey = new Uint8Array(blockSize);
+  paddedKey.set(key);
+
+  const oKeyPad = new Uint8Array(blockSize);
+  const iKeyPad = new Uint8Array(blockSize);
+  for (let i = 0; i < blockSize; i++) {
+    oKeyPad[i] = paddedKey[i] ^ 0x5c;
+    iKeyPad[i] = paddedKey[i] ^ 0x36;
+  }
+
+  const inner = sha1(concat(iKeyPad, msgBytes));
+  const hmac = sha1(concat(oKeyPad, inner));
+  return btoa(String.fromCharCode(...hmac));
+}
+
+function concat(a, b) {
+  const c = new Uint8Array(a.length + b.length);
+  c.set(a);
+  c.set(b, a.length);
+  return c;
+}
+
+// Minimal SHA1 implementation
+function sha1(msg) {
+  let h0 = 0x67452301, h1 = 0xefcdab89, h2 = 0x98badcfe, h3 = 0x10325476, h4 = 0xc3d2e1f0;
+  const msgLen = msg.length;
+  const bitLen = msgLen * 8;
+
+  // Pre-processing: padding
+  const padded = new Uint8Array(Math.ceil((msgLen + 9) / 64) * 64);
+  padded.set(msg);
+  padded[msgLen] = 0x80;
+  const view = new DataView(padded.buffer);
+  view.setUint32(padded.length - 4, bitLen, false);
+
+  // Process each 512-bit block
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    const w = new Uint32Array(80);
+    for (let i = 0; i < 16; i++) {
+      w[i] = view.getUint32(offset + i * 4, false);
+    }
+    for (let i = 16; i < 80; i++) {
+      w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    }
+
+    let a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f, k;
+      if (i < 20) { f = (b & c) | (~b & d); k = 0x5a827999; }
+      else if (i < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
+      else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
+      else { f = b ^ c ^ d; k = 0xca62c1d6; }
+
+      const temp = (rotl(a, 5) + f + e + k + w[i]) >>> 0;
+      e = d; d = c; c = rotl(b, 30); b = a; a = temp;
+    }
+
+    h0 = (h0 + a) >>> 0;
+    h1 = (h1 + b) >>> 0;
+    h2 = (h2 + c) >>> 0;
+    h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0;
+  }
+
+  const result = new Uint8Array(20);
+  const rv = new DataView(result.buffer);
+  rv.setUint32(0, h0, false);
+  rv.setUint32(4, h1, false);
+  rv.setUint32(8, h2, false);
+  rv.setUint32(12, h3, false);
+  rv.setUint32(16, h4, false);
+  return result;
+}
+
+function rotl(n, s) {
+  return ((n << s) | (n >>> (32 - s))) >>> 0;
 }
