@@ -187,3 +187,75 @@ test("an active cooldown short-circuits /login WITHOUT calling Garmin (#214 pre-
     globalThis.fetch = orig;
   }
 });
+
+// ── /oauth2 (#59) ─────────────────────────────────────────────────────────
+// The consolidation (#47, hevy2garmin#520) dropped this route while soma's
+// Strava bridge still called it, and the bridge failed every scheduled run for
+// 38 hours against a 404. The first test below is the guard for exactly that:
+// the route must answer, whatever it answers.
+
+function oauth2Request(body) {
+  return new Request("https://w.example/oauth2", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+test("/oauth2 exists: it does not 404, which is the regression that broke the bridge", async () => {
+  const res = await worker.fetch(oauth2Request({}), {});
+  assert.notEqual(res.status, 404, "the route must be routed at all");
+  assert.equal(res.status, 400, "an empty body is a bad request, not an unknown path");
+  assert.equal((await res.json()).error, "Missing oauth1 token");
+});
+
+test("/oauth2 signs the exchange and returns the token with expiries filled in", async () => {
+  const orig = globalThis.fetch;
+  const seen = {};
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes("oauth_consumer.json")) {
+      return new Response(JSON.stringify({ consumer_key: "ck", consumer_secret: "cs" }));
+    }
+    seen.url = String(url);
+    seen.auth = init?.headers?.Authorization || "";
+    return new Response(JSON.stringify({ access_token: "at", refresh_token: "rt", expires_in: 3600 }));
+  };
+  try {
+    const res = await worker.fetch(
+      oauth2Request({ oauth_token: "t", oauth_token_secret: "s" }), {},
+    );
+    assert.equal(res.status, 200);
+    const { oauth2 } = await res.json();
+    assert.equal(oauth2.access_token, "at");
+    assert.ok(oauth2.expires_at > Math.floor(Date.now() / 1000), "expires_at is computed from expires_in");
+    assert.ok(seen.url.endsWith("/oauth-service/oauth/exchange/user/2.0"), `exchanged at ${seen.url}`);
+    // The whole reason this route exists is the OAuth1 signature.
+    assert.match(seen.auth, /^OAuth /, "sends an OAuth1 Authorization header");
+    assert.match(seen.auth, /oauth_signature="/, "the header carries a signature");
+    assert.match(seen.auth, /oauth_token="t"/, "signs with the caller's token");
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test("/oauth2 reports a Garmin rejection instead of pretending it worked", async () => {
+  const orig = globalThis.fetch;
+  globalThis.fetch = async (url) =>
+    String(url).includes("oauth_consumer.json")
+      ? new Response(JSON.stringify({ consumer_key: "ck", consumer_secret: "cs" }))
+      : new Response("nope", { status: 401 });
+  try {
+    const res = await worker.fetch(oauth2Request({ oauth_token: "t", oauth_token_secret: "s" }), {});
+    assert.equal(res.status, 502);
+    assert.match((await res.json()).error, /oauth2 exchange 401/);
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test("an unknown path still 404s, so the new route did not widen the router", async () => {
+  const res = await worker.fetch(
+    new Request("https://w.example/nope", { method: "POST", body: "{}" }), {},
+  );
+  assert.equal(res.status, 404);
+});
