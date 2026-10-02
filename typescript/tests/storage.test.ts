@@ -45,6 +45,22 @@ describe("DBTokenStore (real DB, throwaway key)", () => {
     expect(JSON.parse((await store.load())!)).toEqual(payload);  // round-trip
   });
 
+  it.runIf(url)("reads a FLAT row (the payload at the top level), which the Python login wrote", async () => {
+    const { Client } = await import("pg");
+    const c = new Client({ connectionString: url });
+    await c.connect();
+    try {
+      await store.delete();
+      await c.query(
+        "INSERT INTO platform_credentials (platform, auth_type, credentials, status) VALUES ($1, 'oauth', $2::jsonb, 'active')",
+        ["garmin_ts_test", JSON.stringify(payload)],
+      );
+    } finally {
+      await c.end();
+    }
+    expect(JSON.parse((await store.load())!)).toEqual(payload);
+  });
+
   it.runIf(url)("a re-save restores status and connected_at, not just the payload", async () => {
     // The regression this guards: setting status only in the INSERT branch left every login
     // after the first with the row's existing value, so a status parked at the schema default

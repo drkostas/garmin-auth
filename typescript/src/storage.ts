@@ -122,6 +122,13 @@ export class DBTokenStore implements TokenStore {
         }
         return typeof payload === "string" ? payload : null;
       }
+      // The FLAT shape: the DI payload at the top level of `credentials`. The Python fresh login wrote
+      // this, and after every manual re-login the TS store read nothing and reported "needs MFA" until
+      // the row was nested by hand (soma kept its own repair for it). It is the same payload the
+      // nested shape wraps, so read it as is; the next save nests it.
+      if (creds && typeof creds === "object" && "di_token" in creds) {
+        return JSON.stringify(creds);
+      }
       // Legacy 0.2.x oauth1/oauth2 format → stale, force re-auth.
       if (creds && typeof creds === "object" && ("oauth1_token.json" in creds || "oauth2_token.json" in creds)) {
         return null;
