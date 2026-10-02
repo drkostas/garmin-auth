@@ -4,6 +4,10 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [npm 0.7.2] The token store reads a flat token row
+
+- `DBTokenStore.load()` reads a row whose DI payload sits at the top level of `credentials`, which the Python login wrote. Until now the TS store read nothing from it and reported that the account needed MFA, so every manual re-login needed the row nested by hand. The next save nests it.
+
 ## [npm 0.7.0] — one Garmin SSO Worker for the ecosystem (#47)
 
 - `garmin-auth/sso-worker`: the client for the Cloudflare Worker that performs the Garmin DI login, MFA continuation and token exchange from an IP Garmin accepts; the Worker source lives in `worker/` and is the only copy (hevy2garmin's copies were deleted).
