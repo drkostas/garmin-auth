@@ -4,6 +4,10 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [npm 0.7.3] A README on the npm page
+
+- The npm package has its own README (sign-in through the Worker, the token stores, the client and the parsers). The npm page was empty.
+
 ## [npm 0.7.2] The token store reads a flat token row
 
 - `DBTokenStore.load()` reads a row whose DI payload sits at the top level of `credentials`, which the Python login wrote. Until now the TS store read nothing from it and reported that the account needed MFA, so every manual re-login needed the row nested by hand. The next save nests it.
