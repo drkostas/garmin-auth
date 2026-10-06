@@ -17,7 +17,24 @@ export interface DITokenBundle {
 }
 
 export class GarminAuthenticationError extends Error {
-  constructor(msg: string) { super(msg); this.name = "GarminAuthenticationError"; }
+  /** The HTTP status Garmin answered with, when the error came from a response. */
+  readonly status?: number;
+  constructor(msg: string, status?: number) {
+    super(msg);
+    this.name = "GarminAuthenticationError";
+    this.status = status;
+  }
+}
+
+/**
+ * Whether an error means Garmin rejected the stored tokens, as opposed to a failure that says
+ * nothing about them (rate limit, server error, outage). A rejection is a 400 (the refresh grant
+ * was refused), 401 or 403, or a token bundle that cannot be used at all (no status). Matches
+ * auth.py, where garminconnect raises its connection and too-many-requests errors separately.
+ */
+export function isTokenRejection(e: unknown): boolean {
+  if (!(e instanceof GarminAuthenticationError)) return false;
+  return e.status === undefined || e.status === 400 || e.status === 401 || e.status === 403;
 }
 
 /** Native Android app headers garminconnect sends for DI requests. */
@@ -90,7 +107,7 @@ export class GarminClient {
       }),
       body,
     });
-    if (!res.ok) throw new GarminAuthenticationError(`DI refresh failed: ${res.status}`);
+    if (!res.ok) throw new GarminAuthenticationError(`DI refresh failed: ${res.status}`, res.status);
     const data = await res.json() as { access_token?: string; refresh_token?: string };
     if (!data.access_token) throw new GarminAuthenticationError("DI refresh returned no access_token");
     this.di_token = data.access_token;
@@ -105,7 +122,7 @@ export class GarminClient {
       await this.refreshDiToken();
       res = await fetch(url, { headers: this.apiHeaders() });
     }
-    if (!res.ok) throw new GarminAuthenticationError(`connectapi ${path} → ${res.status}`);
+    if (!res.ok) throw new GarminAuthenticationError(`connectapi ${path} → ${res.status}`, res.status);
     if (res.status === 204) return undefined as T;
     return res.json() as Promise<T>;
   }
@@ -121,7 +138,7 @@ export class GarminClient {
       await this.refreshDiToken();
       res = await fetch(url, { headers: headers() });
     }
-    if (!res.ok) throw new GarminAuthenticationError(`connectapi GET(bytes) ${path} → ${res.status}`);
+    if (!res.ok) throw new GarminAuthenticationError(`connectapi GET(bytes) ${path} → ${res.status}`, res.status);
     return new Uint8Array(await res.arrayBuffer());
   }
 
@@ -133,7 +150,7 @@ export class GarminClient {
       await this.refreshDiToken();
       res = await fetch(url, init());
     }
-    if (!res.ok) throw new GarminAuthenticationError(`connectapi ${method} ${path} → ${res.status}`);
+    if (!res.ok) throw new GarminAuthenticationError(`connectapi ${method} ${path} → ${res.status}`, res.status);
     if (res.status === 204) return undefined as T;
     const text = await res.text();
     return (text ? JSON.parse(text) : undefined) as T;
