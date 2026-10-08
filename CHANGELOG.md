@@ -4,7 +4,7 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [npm 0.7.4] A cached login survives a rate limit or an outage
 
 - TS: a cached login keeps its tokens when Garmin answers 429 or 5xx, or the refresh grant fails with a server error. Until now any non-OK response deleted them, so a short outage or rate limit forced a fresh sign-in with MFA. They are cleared only on a 400 from the refresh grant, a 401 or a 403, as `auth.py` does. `GarminAuthenticationError` carries the response's `status`, and `isTokenRejection()` tells the two cases apart (#65).
 
