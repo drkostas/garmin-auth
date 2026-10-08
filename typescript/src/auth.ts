@@ -6,7 +6,7 @@
  * is Garmin-Cloudflare-gated on cloud IPs — callers that need it route through the
  * CF Worker (soma's garmin_client) and hand the resulting DI tokens to a TokenStore.
  */
-import { GarminClient, GarminAuthenticationError } from "./client";
+import { GarminClient, GarminAuthenticationError, isTokenRejection } from "./client";
 import { FileTokenStore, type TokenStore } from "./storage";
 
 export const NEEDS_MFA = "needs_mfa" as const;
@@ -79,7 +79,9 @@ export class GarminAuth {
       // Validate + proactively refresh by making a lightweight authenticated call.
       await client.connectapi("/userprofile-service/socialProfile");
     } catch (e) {
-      if (e instanceof GarminAuthenticationError) {
+      // Clear only tokens Garmin rejected. A 429 or 5xx says nothing about them, and deleting
+      // them there would turn a short outage into a fresh sign-in with MFA.
+      if (isTokenRejection(e)) {
         await this.store.delete(); // stale → clear
         return null;
       }
