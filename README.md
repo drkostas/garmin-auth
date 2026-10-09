@@ -1,3 +1,5 @@
+![garmin-auth](docs/images/banner.png)
+
 # garmin-auth
 
 [![CI](https://github.com/drkostas/garmin-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/drkostas/garmin-auth/actions/workflows/ci.yml)
