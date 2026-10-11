@@ -12,6 +12,19 @@ npm install garmin-auth
 
 Garmin blocks its own sign-in from most cloud IPs, so a fresh login (email, password and the second factor) goes through a small Cloudflare Worker, which is in this repository's [`worker/`](https://github.com/drkostas/garmin-auth/tree/main/worker) folder. `createSsoWorkerClient` talks to it, and `tokensFromResult` turns its answer into tokens you can save in a store.
 
+A self-hosted server on a home connection is usually not blocked, and can run the same Worker code in its own process instead, so the password and code go only to Garmin. `garmin-auth/sso-local` gives you that client; it has the same `login`, `loginMfa` and `exchange` as the Worker client.
+
+```ts
+import { createLocalSsoClient } from "garmin-auth/sso-local";
+import { tokensFromResult } from "garmin-auth/sso-worker";
+
+const sso = createLocalSsoClient(); // keep one per process: it holds a pending MFA step
+const r = await sso.login(email, password); // or "needs_mfa", then sso.loginMfa(r.session_id!, code)
+const tokens = tokensFromResult(r); // save these in a store
+```
+
+Pending MFA steps live in memory, so the second step has to reach the same process as the first: a long-running server, not a serverless function.
+
 After that the package works from the saved tokens. `GarminAuth` loads them, refreshes the DI token when it expires, saves the new tokens after every refresh (Garmin rotates the refresh token each time, so an unsaved one stops working), and gives you a client.
 
 ```ts

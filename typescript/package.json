@@ -49,14 +49,18 @@
     "./sso-worker": {
       "types": "./dist/sso-worker.d.ts",
       "default": "./dist/sso-worker.js"
+    },
+    "./sso-local": {
+      "types": "./dist/sso-local.d.ts",
+      "default": "./dist/sso-local.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "build": "node scripts/copy-worker.mjs && tsc -p tsconfig.json",
+    "test": "node scripts/copy-worker.mjs && vitest run",
     "clean": "rm -rf dist",
     "prepack": "npm run clean && npm run build"
   },

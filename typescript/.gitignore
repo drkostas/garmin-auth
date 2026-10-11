@@ -1,2 +1,4 @@
 node_modules/
 dist/
+# Generated from ../worker/index.js by scripts/copy-worker.mjs
+src/sso-worker-handler.js

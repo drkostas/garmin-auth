@@ -2,6 +2,8 @@
 
 Garmin blocks the login and token exchange from cloud provider IP ranges (Vercel, GitHub Actions, AWS). This Worker runs the whole credential flow, including two-factor, on Cloudflare's edge, which Garmin does not block, and hands the DI tokens back to the caller. It is the one deploy every consumer in the ecosystem points at (hevy2garmin's dashboards, macro-engine's setup page, soma).
 
+The npm package also compiles this file (`typescript/scripts/copy-worker.mjs`) and runs it in-process as `garmin-auth/sso-local`, for a self-hosted server that can reach Garmin itself. A change here ships in both, so keep it to web-standard APIs (`fetch`, `crypto.subtle`, `Request`, `Response`) that Node has as well.
+
 ## Endpoints
 
 - `POST /login` `{ email, password }` → `{ status: "success", di_token, di_refresh_token, di_client_id }` | `{ status: "needs_mfa", session_id, mfa_method }` | `{ status: "needs_captcha" }` | `{ status: "invalid_credentials" }` | `{ status: "rate_limited", retry_after_seconds }` | `{ status: "error", message }`

@@ -104,6 +104,20 @@ jobs:
           EOF
           node check.js
 
+      - name: The local sign-in loads from the tarball and stays off the network
+        run: |
+          cd /tmp/consumer
+          cat > check-sso-local.js <<'EOF'
+          const { createLocalSsoClient, createLocalSsoFetch, LOCAL_SSO_URL } = require("garmin-auth/sso-local");
+          if (typeof createLocalSsoClient().login !== "function") { console.error("FAIL: no client"); process.exit(1); }
+          createLocalSsoFetch()("https://garmin-auth-sso.gkos.workers.dev/login", { method: "POST", body: "{}" }).then(
+            () => { console.error("FAIL: a Worker URL was accepted"); process.exit(1); },
+            (err) => console.log("OK: compiled Worker handler loaded;", String(err.message).slice(0, 60)),
+          );
+          if (!LOCAL_SSO_URL.startsWith("http://")) process.exit(1);
+          EOF
+          node check-sso-local.js
+
   worker:
     # The SSO Worker's own tests (node --test); nothing ran them before 2026-09-13.
     runs-on: ubuntu-latest
