@@ -4,6 +4,10 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [npm 0.8.1] Published from GitHub Actions
+
+- The npm package is published from GitHub Actions with npm trusted publishing, so it carries a signed provenance statement and no npm token is involved. No code changes (#75).
+
 ## [npm 0.8.0] Sign in from your own server, and every refresh is saved
 
 - TS: `GarminAuth` saves the tokens after every refresh, not only after its startup check. Garmin rotates the refresh token on each refresh, and a client kept for longer than the DI token lives refreshed on a later 401 without saving, so the store kept a refresh token Garmin had replaced and the next start lost the login. `GarminClient.onRefresh` runs after each successful refresh; `GarminAuth` points it at its own save (hevy2garmin#721).
