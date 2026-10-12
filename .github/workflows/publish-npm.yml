@@ -1,0 +1,54 @@
+name: Publish to npm
+
+# Publishes typescript/ through npm trusted publishing (OIDC): npm accepts a publish
+# from this workflow on this repository, so there is no npm token to expire or leak.
+# It runs when typescript/package.json changes on main (a release PR) and by hand,
+# and skips a version npm already has. The package's trusted publisher on npmjs.com
+# names this file, so renaming it breaks publishing (#75).
+on:
+  push:
+    branches: [main]
+    paths: [typescript/package.json]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      # Trusted publishing needs npm 11.5.1 or later, and Node 22 ships npm 10. Pinned,
+      # so a new npm release cannot change publishing under us.
+      - run: npm install -g npm@11.11.0
+      - name: Is this version already on npm?
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already on npm, nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Publishing $NAME@$VERSION."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.publish == 'true'
+        run: npm ci
+      - if: steps.check.outputs.publish == 'true'
+        run: npm test
+      - if: steps.check.outputs.publish == 'true'
+        run: npm publish --access public
