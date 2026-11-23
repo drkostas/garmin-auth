@@ -4,6 +4,10 @@ All notable changes to garmin-auth are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [npm 0.9.0] One Garmin activity image upload shared across the ecosystem
+
+- `uploadActivityImage(client, activityId, image, options?)` posts an image onto a Garmin activity with `POST /activity-service/activity/{id}/image`, as multipart form data with the bytes in a `file` field. It uses `GarminClient.postForm`, so the DI token is refreshed on a 401 like every other write. The image is raw bytes or a ready `Blob`, and the filename and content type default to a PNG. soma moves its two inline copies of this call onto the shared function, and hevy2garmin uses it to put Hevy workout photos on the matching Garmin activity (hevy2garmin#525, hevy2garmin#237).
+
 ## [npm 0.8.1] Published from GitHub Actions
 
 - The npm package is published from GitHub Actions with npm trusted publishing, so it carries a signed provenance statement and no npm token is involved. No code changes (#75).
